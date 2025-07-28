@@ -49,9 +49,16 @@ export function activate(context: vscode.ExtensionContext) {
     try {
       const res = await fetch('http://localhost:11434/api/tags');
       const data = await res.json() as any;
-      ollamaModels = Array.isArray(data?.tags) ? data.tags.map((m: any) => m.name) : [];
+      // Use 'model' property if available, fallback to 'name'
+      ollamaModels = Array.isArray(data?.models)
+        ? data.models.map((m: any) => m.model || m.name)
+        : Array.isArray(data?.tags)
+          ? data.tags.map((m: any) => m.model || m.name)
+          : [];
+      console.log('[EXTENSION DEBUG] Ollama models fetched:', ollamaModels);
     } catch (e) {
       ollamaModels = [getDefaultModel('Ollama')];
+      console.log('[EXTENSION DEBUG] Ollama fetch error:', e);
     }
 
     const panel = vscode.window.createWebviewPanel(
@@ -61,27 +68,97 @@ export function activate(context: vscode.ExtensionContext) {
       { enableScripts: true }
     );
     panel.webview.html = getWebviewContent();
-    panel.webview.postMessage({ type: 'config', config, ollamaModels });
+    panel.webview.postMessage({
+      type: 'config',
+      config: {
+        ...config,
+        models: {
+          OpenAI: ['gpt-4-turbo', 'gpt-3.5-turbo'],
+          Claude: ['claude-3-opus-20240229'],
+          Gemini: ['gemini-pro'],
+          OpenRouter: ['mistralai/mistral-7b-instruct'],
+          Ollama: ollamaModels
+        }
+      },
+      ollamaModels
+    });
+    console.log('[EXTENSION DEBUG] Sent config to webview:', {
+      ...config,
+      models: {
+        OpenAI: ['gpt-4-turbo', 'gpt-3.5-turbo'],
+        Claude: ['claude-3-opus-20240229'],
+        Gemini: ['gemini-pro'],
+        OpenRouter: ['mistralai/mistral-7b-instruct'],
+        Ollama: ollamaModels
+      }
+    });
 
     panel.webview.onDidReceiveMessage(async message => {
       if (message.type === 'providerConfig') {
-        await configureProvider(context, secretStorage);
-        // Refresh Ollama models after provider change
+        config.provider = message.provider;
+        config.model = message.model;
+        await context.globalState.update('llmConfig', config);
+
+
+
+		let ollamaModels: string[] = [];
+        try {
+          const res = await fetch('http://localhost:11434/api/tags');
+          const data = await res.json() as any;
+          ollamaModels = Array.isArray(data?.models)
+            ? data.models.map((m: any) => m.model || m.name)
+            : Array.isArray(data?.tags)
+              ? data.tags.map((m: any) => m.model || m.name)
+              : [];
+        } catch (e) {
+          ollamaModels = [getDefaultModel('Ollama')];
+        }
+        panel.webview.postMessage({
+          type: 'config',
+          config: {
+            ...config,
+            models: {
+              OpenAI: ['gpt-4-turbo', 'gpt-3.5-turbo'],
+              Claude: ['claude-3-opus-20240229'],
+              Gemini: ['gemini-pro'],
+              OpenRouter: ['mistralai/mistral-7b-instruct'],
+              Ollama: ollamaModels
+            }
+          },
+          ollamaModels
+        });
+        return;
+      }
+      if (message.type === 'selectOllamaModel' && message.model) {
+        config.provider = 'Ollama';
+        config.model = message.model;
+        await context.globalState.update('llmConfig', config);
         let ollamaModels: string[] = [];
         try {
           const res = await fetch('http://localhost:11434/api/tags');
           const data = await res.json() as any;
-          ollamaModels = Array.isArray(data?.tags) ? data.tags.map((m: any) => m.name) : [];
+          ollamaModels = Array.isArray(data?.models)
+            ? data.models.map((m: any) => m.model || m.name)
+            : Array.isArray(data?.tags)
+              ? data.tags.map((m: any) => m.model || m.name)
+              : [];
         } catch (e) {
           ollamaModels = [getDefaultModel('Ollama')];
         }
-        panel.webview.postMessage({ type: 'config', config, ollamaModels });
-        return;
-      }
-      if (message.type === 'selectOllamaModel' && message.model) {
-        config.model = message.model;
-        await context.globalState.update('llmConfig', config);
-        panel.webview.postMessage({ type: 'config', config });
+        panel.webview.postMessage({
+          type: 'config',
+          config: {
+            ...config,
+            models: {
+              OpenAI: ['gpt-4-turbo', 'gpt-3.5-turbo'],
+              Claude: ['claude-3-opus-20240229'],
+              Gemini: ['gemini-pro'],
+              OpenRouter: ['mistralai/mistral-7b-instruct'],
+              Ollama: ollamaModels
+            }
+          },
+          ollamaModels
+        });
         return;
       }
       const userInput = message.text;
